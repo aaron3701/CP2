@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Product Listings</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Welcome, {{ username }}!</h1>
+    <h2>Available Products</h2>
+
+    <div class="product-grid">
+        {% for product in products %}
+        <div class="product-card">
+            <img src="{{ product.image }}" alt="{{ product.name }}" class="product-img">
+            <h3>{{ product.name }}</h3>
+            <p>{{ product.description }}</p>
+            <p><strong>Price:</strong> RM{{ product.price }}</p>
+            <p><strong>Category:</strong> {{ product.category }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

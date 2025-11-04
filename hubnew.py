@@ -58,7 +58,7 @@ def rag_query(coll, query, k=4):
         n_threads=os.cpu_count(),
         n_gpu_layers=0,   # CPU only
         verbose=False,    # quieter logs
-    ) """
+    ) """ 
  
 def load_llm(
     gpu="auto",           # "cuda", "metal", "rocm", or "auto"
