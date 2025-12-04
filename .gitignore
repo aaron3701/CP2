@@ -2,3 +2,5 @@ venv/
 serviceAccountKey.json
 models/
 rag/
+__pycache__/
+.idea/

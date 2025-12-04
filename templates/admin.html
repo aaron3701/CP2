@@ -1,0 +1,654 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel - ShopHub{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold text-slate-800 mb-2">Product Management</h1>
+                    <p class="text-slate-600">Add, edit, and manage your products</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-slate-600">Logged in as: <strong>{{ username }}</strong></span>
+                    <a href="{{ url_for('home') }}" class="px-4 py-2 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors text-sm font-medium">
+                        Back to Store
+                    </a>
+                    <a href="{{ url_for('logout') }}" class="px-4 py-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors text-sm font-medium">
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-lg p-8 mb-8">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center">
+                <svg class="w-6 h-6 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                Add New Product
+            </h2>
+            
+            <form id="addProductForm" class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="productName" class="block text-sm font-medium text-slate-700 mb-2">
+                            Product Name *
+                        </label>
+                        <input 
+                            type="text" 
+                            id="productName" 
+                            name="name"
+                            required
+                            class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors"
+                            placeholder="e.g., Wireless Earbuds"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="productPrice" class="block text-sm font-medium text-slate-700 mb-2">
+                            Price (RM) *
+                        </label>
+                        <input 
+                            type="number" 
+                            id="productPrice" 
+                            name="price"
+                            step="0.01"
+                            required
+                            class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors"
+                            placeholder="99.99"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label for="productCategory" class="block text-sm font-medium text-slate-700 mb-2">
+                        Category *
+                    </label>
+                    <select 
+                        id="productCategory" 
+                        name="category"
+                        required
+                        class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors"
+                    >
+                        <option value="">Select a category</option>
+                        <option value="Electronics">Electronics</option>
+                        <option value="Fashion">Fashion</option>
+                        <option value="Groceries & Food">Groceries & Food</option>
+                        <option value="Home & Living">Home & Living</option>
+                        <option value="Health & Beauty">Health & Beauty</option>
+                        <option value="Sports & Outdoors">Sports & Outdoors</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="productDescription" class="block text-sm font-medium text-slate-700 mb-2">
+                        Description *
+                    </label>
+                    <textarea 
+                        id="productDescription" 
+                        name="description"
+                        rows="4"
+                        required
+                        class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors resize-none"
+                        placeholder="Enter a detailed product description..."
+                    ></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">
+                        Product Image *
+                    </label>
+                    
+                    <div class="flex gap-4 mb-4">
+                        <label class="flex items-center">
+                            <input type="radio" name="imageOption" value="upload" checked class="mr-2" />
+                            <span class="text-sm text-slate-700">Upload Image</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="imageOption" value="url" class="mr-2" />
+                            <span class="text-sm text-slate-700">Image URL</span>
+                        </label>
+                    </div>
+
+                    <div id="uploadOption" class="space-y-4">
+                        <div class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-purple-500 transition-colors cursor-pointer">
+                            <input 
+                                type="file" 
+                                id="productImage" 
+                                name="file"
+                                accept="image/jpeg,image/png,image/jpg,image/webp"
+                                class="hidden"
+                            />
+                            <label for="productImage" class="cursor-pointer">
+                                <svg class="w-12 h-12 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                </svg>
+                                <p class="text-slate-600 font-medium">Click to upload image</p>
+                                <p class="text-slate-400 text-sm mt-1">PNG, JPG, JPEG up to 5MB</p>
+                            </label>
+                        </div>
+                        <div id="imagePreview" class="hidden">
+                            <img id="previewImg" src="" alt="Preview" class="max-h-48 mx-auto rounded-lg" />
+                            <p id="fileName" class="text-sm text-slate-600 text-center mt-2"></p>
+                        </div>
+                    </div>
+
+                    <div id="urlOption" class="hidden">
+                        <input 
+                            type="url" 
+                            id="productImageUrl" 
+                            name="imageUrl"
+                            class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors"
+                            placeholder="https://example.com/image.jpg"
+                        />
+                        <p class="text-sm text-slate-500 mt-2">Enter a direct link to the product image</p>
+                    </div>
+                </div>
+
+                <div class="flex gap-4">
+                    <button 
+                        type="submit" 
+                        class="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-xl font-semibold hover:from-purple-700 hover:to-blue-700 transition-all transform hover:scale-105 shadow-lg"
+                    >
+                        Add Product
+                    </button>
+                    <button 
+                        type="reset" 
+                        class="px-8 py-4 bg-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
+                    >
+                        Clear Form
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-lg p-8">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center">
+                <svg class="w-6 h-6 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                </svg>
+                All Products
+            </h2>
+            
+            <div id="productsTable" class="overflow-x-auto">
+                <p class="text-center text-slate-500 py-8">Loading products...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="messageContainer" class="fixed top-4 right-4 z-50"></div>
+
+<div id="editProductModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-50">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-8 transform transition-all duration-300 scale-95 opacity-0" id="editModalContent">
+        <h3 class="text-2xl font-bold text-slate-800 mb-6 border-b pb-3">Edit Product</h3>
+        
+        <form id="editProductForm" class="space-y-6">
+            <input type="hidden" id="editProductId" name="product_id">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="editProductName" class="block text-sm font-medium text-slate-700 mb-2">
+                        Product Name *
+                    </label>
+                    <input type="text" id="editProductName" name="name" required class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors" />
+                </div>
+
+                <div>
+                    <label for="editProductPrice" class="block text-sm font-medium text-slate-700 mb-2">
+                        Price (RM) *
+                    </label>
+                    <input type="number" id="editProductPrice" name="price" step="0.01" required class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors" />
+                </div>
+            </div>
+
+            <div>
+                <label for="editProductCategory" class="block text-sm font-medium text-slate-700 mb-2">
+                    Category *
+                </label>
+                <select id="editProductCategory" name="category" required class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors">
+                    <option value="Electronics">Electronics</option>
+                    <option value="Fashion">Fashion</option>
+                    <option value="Groceries & Food">Groceries & Food</option>
+                    <option value="Home & Living">Home & Living</option>
+                    <option value="Health & Beauty">Health & Beauty</option>
+                    <option value="Sports & Outdoors">Sports & Outdoors</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="editProductDescription" class="block text-sm font-medium text-slate-700 mb-2">
+                    Description *
+                </label>
+                <textarea id="editProductDescription" name="description" rows="4" required class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors resize-none"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">
+                    Product Image 
+                </label>
+                
+                <div class="mb-4 p-4 border rounded-xl bg-slate-50 flex items-center space-x-4">
+                    <img id="currentImagePreview" src="" alt="Current Image" class="w-20 h-20 object-cover rounded-lg border">
+                    <p class="text-sm text-slate-600">Current Image: <span id="currentImageUrlText" class="font-mono text-xs text-purple-700 truncate"></span></p>
+                </div>
+
+                <div class="flex gap-4 mb-4">
+                    <label class="flex items-center">
+                        <input type="radio" name="imageOption" value="keep" checked class="mr-2" />
+                        <span class="text-sm text-slate-700">Keep Current Image</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="radio" name="imageOption" value="upload" class="mr-2" />
+                        <span class="text-sm text-slate-700">Upload New Image</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="radio" name="imageOption" value="url" class="mr-2" />
+                        <span class="text-sm text-slate-700">New Image URL</span>
+                    </label>
+                </div>
+
+                <div id="editUploadOption" class="hidden space-y-4">
+                    <input type="file" id="editProductImage" name="file" accept="image/*" class="w-full border-2 border-slate-200 rounded-xl p-3" />
+                </div>
+
+                <div id="editUrlOption" class="hidden">
+                    <input type="url" id="editProductImageUrl" name="imageUrl" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors" placeholder="https://new-image.com/new.jpg" />
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-4 pt-4">
+                <button 
+                    type="button" 
+                    onclick="closeEditModal()" 
+                    class="px-6 py-3 bg-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
+                >
+                    Cancel
+                </button>
+                <button 
+                    type="submit" 
+                    class="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-blue-700 transition-colors shadow-lg"
+                >
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // --- Global Utility Functions ---
+    // Show message notification
+    function showMessage(message, type) {
+        const container = document.getElementById('messageContainer');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white px-6 py-3 rounded-lg shadow-lg mb-2 transform transition-all`;
+        messageDiv.textContent = message;
+        
+        container.appendChild(messageDiv);
+        
+        setTimeout(() => {
+            messageDiv.style.opacity = '0';
+            messageDiv.style.transition = 'opacity 0.3s ease-out';
+            setTimeout(() => messageDiv.remove(), 300);
+        }, 3000);
+    }
+    window.showMessage = showMessage; // Make it globally accessible for other functions
+
+    // --- Add Product Form Logic (Existing Logic Maintained) ---
+    const addImageOptions = document.querySelectorAll('#addProductForm input[name="imageOption"]');
+    const addUploadOption = document.getElementById('uploadOption');
+    const addUrlOption = document.getElementById('urlOption');
+    const addImageInput = document.getElementById('productImage');
+
+    function toggleAddImageFields(option) {
+        addImageInput.required = false;
+        document.getElementById('productImageUrl').required = false;
+
+        if (option === 'upload') {
+            addUploadOption.classList.remove('hidden');
+            addUrlOption.classList.add('hidden');
+            addImageInput.required = true;
+        } else {
+            addUploadOption.classList.add('hidden');
+            addUrlOption.classList.remove('hidden');
+            document.getElementById('productImageUrl').required = true;
+        }
+    }
+    
+    addImageOptions.forEach(option => {
+        option.addEventListener('change', function() {
+            toggleAddImageFields(this.value);
+        });
+    });
+    toggleAddImageFields('upload'); // Initialize state for Add form
+
+    // Image preview for Add form
+    const imagePreview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+    const fileName = document.getElementById('fileName');
+
+    addImageInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewImg.src = e.target.result;
+                fileName.textContent = file.name;
+                imagePreview.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        } else {
+            imagePreview.classList.add('hidden');
+        }
+    });
+
+    // Add Form submission
+    const form = document.getElementById('addProductForm');
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(form);
+        const imageOption = document.querySelector('#addProductForm input[name="imageOption"]:checked').value;
+        
+        // Clean up FormData (CRITICAL for both Add and Edit)
+        if (imageOption === 'upload') {
+            formData.delete('imageUrl'); 
+            if (!formData.get('file') || formData.get('file').name === '') {
+                showMessage('Please select an image file to upload.', 'error');
+                return;
+            }
+        } else { // imageOption === 'url'
+            formData.delete('file');
+            if (!formData.get('imageUrl').trim()) {
+                showMessage('Please provide a valid image URL.', 'error');
+                return;
+            }
+        }
+        
+        // Send the request
+        try {
+            const response = await fetch('/api/products/add', {
+                method: 'POST',
+                body: formData 
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage('Product added successfully!', 'success');
+                form.reset();
+                imagePreview.classList.add('hidden'); // Hide add preview
+                toggleAddImageFields('upload'); // Reset radio buttons
+                loadProducts(); // Reload product list
+            } else {
+                showMessage(result.error || 'Failed to add product', 'error');
+            }
+        } catch (error) {
+            console.error('Fetch Error:', error);
+            showMessage('An error occurred. Please try again.', 'error');
+        }
+    });
+
+
+    // -------------------------------------------------------------
+    // --- EDIT PRODUCT MODAL AND SUBMISSION LOGIC (NEW) ---
+    // -------------------------------------------------------------
+
+    const editModal = document.getElementById('editProductModal');
+    const editModalContent = document.getElementById('editModalContent');
+    const editForm = document.getElementById('editProductForm');
+    const editImageOptions = document.querySelectorAll('#editProductForm input[name="imageOption"]');
+    const editUploadOption = document.getElementById('editUploadOption');
+    const editUrlOption = document.getElementById('editUrlOption');
+
+    // Helper to open the modal
+    function openEditModal() {
+        editModal.classList.remove('hidden');
+        editModal.classList.add('flex');
+        // Simple animation
+        setTimeout(() => {
+            editModalContent.classList.remove('scale-95', 'opacity-0');
+            editModalContent.classList.add('scale-100', 'opacity-100');
+        }, 10);
+    }
+    
+    // Helper to close the modal
+    window.closeEditModal = function() {
+        editModalContent.classList.remove('scale-100', 'opacity-100');
+        editModalContent.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => {
+            editModal.classList.add('hidden');
+            editModal.classList.remove('flex');
+            editForm.reset(); // Clear form on close
+        }, 300);
+    }
+    
+    // Toggle fields based on radio button selection in the Edit Modal
+    editImageOptions.forEach(option => {
+        option.addEventListener('change', function() {
+            editUploadOption.classList.add('hidden');
+            editUrlOption.classList.add('hidden');
+
+            if (this.value === 'upload') {
+                editUploadOption.classList.remove('hidden');
+            } else if (this.value === 'url') {
+                editUrlOption.classList.remove('hidden');
+            }
+            // 'keep' option requires neither extra field
+        });
+    });
+
+    // 1. Fetch data and populate the modal
+    window.loadEditModal = async function(productId) {
+        try {
+            const response = await fetch(`/api/products/${productId}`);
+            const product = await response.json();
+
+            if (!response.ok) {
+                showMessage(product.error || 'Failed to load product for editing.', 'error');
+                return;
+            }
+
+            // Populate Form Fields
+            document.getElementById('editProductId').value = productId;
+            document.getElementById('editProductName').value = product.name;
+            document.getElementById('editProductPrice').value = product.price;
+            document.getElementById('editProductDescription').value = product.description;
+            document.getElementById('editProductCategory').value = product.category;
+            
+            // Populate Image Preview and URL
+            document.getElementById('currentImagePreview').src = product.image;
+            document.getElementById('currentImageUrlText').textContent = product.image;
+
+            // Reset image option to 'keep' by default when modal opens
+            document.querySelector('#editProductForm input[value="keep"]').checked = true;
+            editUploadOption.classList.add('hidden');
+            editUrlOption.classList.add('hidden');
+            document.getElementById('editProductImageUrl').value = '';
+            document.getElementById('editProductImage').value = '';
+
+            openEditModal();
+
+        } catch (error) {
+            console.error('Error fetching product for edit:', error);
+            showMessage('Could not connect to the server to fetch product data.', 'error');
+        }
+    };
+    
+    // 2. Handle Edit Form Submission
+    editForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const productId = document.getElementById('editProductId').value;
+        const formData = new FormData(editForm);
+        const imageOption = document.querySelector('#editProductForm input[name="imageOption"]:checked').value;
+        
+        // Append the image option to the form data
+        formData.set('imageOption', imageOption);
+
+        // CRITICAL STEP: Clean up FormData based on image choice
+        if (imageOption === 'keep') {
+            formData.delete('file');
+            formData.delete('imageUrl');
+        } else if (imageOption === 'url') {
+            formData.delete('file');
+            if (!formData.get('imageUrl').trim()) {
+                showMessage('Please provide a valid image URL for update.', 'error');
+                return;
+            }
+        } else if (imageOption === 'upload') {
+            formData.delete('imageUrl');
+            // If the user selected 'upload' but didn't pick a file, treat it as 'keep' 
+            // but the backend will handle an empty file if it arrives.
+        }
+
+        try {
+            const response = await fetch(`/api/products/update/${productId}`, {
+                method: 'PUT',
+                body: formData 
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage('Product updated successfully!', 'success');
+                closeEditModal();
+                loadProducts(); // Reload product list
+            } else {
+                showMessage(result.error || 'Failed to update product', 'error');
+            }
+        } catch (error) {
+            console.error('Fetch Error:', error);
+            showMessage('An error occurred during product update. Please try again.', 'error');
+        }
+    });
+
+    // -------------------------------------------------------------
+    // --- Product List Logic (MODIFIED) ---
+    // -------------------------------------------------------------
+
+    // Load products
+    async function loadProducts() {
+        try {
+            const response = await fetch('/api/products/all');
+            const data = await response.json();
+            
+            if (response.ok && data.products) {
+                displayProducts(data.products);
+            } else {
+                document.getElementById('productsTable').innerHTML = 
+                    '<p class="text-center text-slate-500 py-8">Failed to load products</p>';
+            }
+        } catch (error) {
+            console.error('Error loading products:', error);
+            document.getElementById('productsTable').innerHTML = 
+                '<p class="text-center text-red-500 py-8">Error loading products</p>';
+        }
+    }
+
+    // Display products in table (MODIFIED to add Edit button)
+    function displayProducts(products) {
+        if (products.length === 0) {
+            document.getElementById('productsTable').innerHTML = 
+                '<p class="text-center text-slate-500 py-8">No products found. Add your first product!</p>';
+            return;
+        }
+
+        const table = `
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b-2 border-slate-200">
+                        <th class="text-left py-3 px-4 font-semibold text-slate-700">Image</th>
+                        <th class="text-left py-3 px-4 font-semibold text-slate-700">Name</th>
+                        <th class="text-left py-3 px-4 font-semibold text-slate-700">Category</th>
+                        <th class="text-left py-3 px-4 font-semibold text-slate-700">Price</th>
+                        <th class="text-left py-3 px-4 font-semibold text-slate-700">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${products.map(product => `
+                        <tr class="border-b border-slate-100 hover:bg-slate-50">
+                            <td class="py-3 px-4">
+                                <img src="${product.image}" alt="${product.name}" class="w-16 h-16 object-cover rounded-lg" 
+                                        onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22><text y=%2232%22 font-size=%2232%22>📦</text></svg>'">
+                            </td>
+                            <td class="py-3 px-4">
+                                <p class="font-medium text-slate-800">${product.name}</p>
+                                <p class="text-sm text-slate-500 line-clamp-1">${product.description}</p>
+                            </td>
+                            <td class="py-3 px-4">
+                                <span class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                                    ${product.category}
+                                </span>
+                            </td>
+                            <td class="py-3 px-4">
+                                <span class="font-bold text-purple-600">RM ${product.price}</span>
+                            </td>
+                            <td class="py-3 px-4 flex items-center space-x-2">
+                                <button onclick="loadEditModal('${product.id}')" class="text-blue-500 hover:text-blue-700 transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                    </svg>
+                                </button>
+                                <button onclick="deleteProduct('${product.id}')" class="text-red-500 hover:text-red-700 transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        
+        document.getElementById('productsTable').innerHTML = table;
+    }
+
+    // Delete product (Existing logic maintained)
+    window.deleteProduct = async function(productId) {
+        if (!confirm('Are you sure you want to delete this product?')) return;
+        
+        try {
+            const response = await fetch(`/api/products/delete/${productId}`, {
+                method: 'DELETE'
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage('Product deleted successfully!', 'success');
+                loadProducts();
+            } else {
+                showMessage(result.error || 'Failed to delete product', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('An error occurred. Please try again.', 'error');
+        }
+    };
+    
+    // Load products on page load
+    loadProducts();
+});
+</script>
+
+<style>
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+/* Utility for the modal to ensure it shows over everything */
+#editProductModal {
+    z-index: 9999; 
+}
+</style>
+{% endblock %}
