@@ -63,6 +63,87 @@ def load_llm(
         verbose=False,
     )
 
+def build_product_index_if_missing(products, path=RAG_DIR, collection_name="products", force_rebuild=False):
+    """
+    Build a persistent Chroma collection for product semantic search.
+    products: list of dicts with keys: id, name, description, category, price, image, (optional) gender, etc.
+    force_rebuild: if True, delete and rebuild the collection (useful when products change)
+    """
+    client = chromadb.PersistentClient(path=path)
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name="BAAI/bge-small-en-v1.5"
+    )
+    
+    # If force_rebuild is True, delete the old collection
+    if force_rebuild:
+        try:
+            client.delete_collection(collection_name)
+        except Exception:
+            pass  # Collection doesn't exist, that's fine
+    
+    coll = client.get_or_create_collection(collection_name, embedding_function=ef)
+
+    # If already populated AND not forcing rebuild, skip
+    if coll.count() > 0 and not force_rebuild:
+        return coll
+
+    ids, docs, metadatas = [], [], []
+    for p in products:
+        pid = str(p.get("id") or p.get("product_id") or p.get("doc_id") or p.get("id_str") or "")
+        if not pid:
+            continue
+        text = " | ".join([
+            str(p.get("name", "")).strip(),
+            str(p.get("category", "")).strip(),
+            str(p.get("description", "")).strip()
+        ])
+        ids.append(pid)
+        docs.append(text)
+        metadatas.append({
+            "name": p.get("name"),
+            "category": p.get("category"),
+            "price": p.get("price"),
+            "image": p.get("image"),
+            **({k: p[k] for k in ("gender","color","in_stock") if k in p})
+        })
+
+    if docs:
+        coll.add(documents=docs, metadatas=metadatas, ids=ids)
+    return coll
+
+def product_index_query(coll, query, n_results=8, where=None):
+    """
+    Query the product collection.
+    where: optional metadata filter dict, e.g. {"gender": "male"}
+    Returns list of dicts: {id, meta, distance}
+    """
+    if coll is None:
+        return []
+
+    try:
+        res = coll.query(
+            query_texts=[query],
+            n_results=n_results,
+            where=where,
+            include=["metadatas", "distances", "documents"]
+        )
+    except TypeError:
+        # Fallback for older chroma versions
+        res = coll.query(
+            query_texts=[query],
+            n_results=n_results,
+            include=["metadatas", "distances", "documents"]
+        )
+
+    ids = res.get("ids", [[]])[0]
+    metas = res.get("metadatas", [[]])[0]
+    dists = res.get("distances", [[]])[0] if "distances" in res else [None]*len(ids)
+
+    out = []
+    for i, pid in enumerate(ids):
+        out.append({"id": pid, "meta": metas[i], "distance": dists[i]})
+    return out
+
 def chat(llm, user_text, context):
     system = """You are Julia, a helpful e-commerce assistant. 
     Use the CONTEXT provided to answer the user's question. 

@@ -4,7 +4,6 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from werkzeug.utils import secure_filename
 import firebase_admin
 from firebase_admin import credentials, firestore
-# NOTE: Removed 'from firebase_admin import storage' as we are using Cloudinary
 import cloudinary
 import cloudinary.uploader
 
@@ -16,16 +15,12 @@ app.secret_key = "supersecretkey"
 
 # --- Initialize Firebase Admin ---
 cred = credentials.Certificate("serviceAccountKey.json")
-# IMPORTANT: Replace 'your-project-id' with your actual Firebase project ID
 firebase_admin.initialize_app(cred, {
-    # The 'storageBucket' key is now irrelevant/unnecessary but we keep the dict structure
     'storageBucket': 'your-project-id.appspot.com'
 })
 db = firestore.client()
 
 # --- Cloudinary Configuration ---
-# NOTE: Using environment variables is the best practice. 
-# Replace the default values with your ACTUAL Cloudinary credentials.
 try:
     cloudinary.config( 
       cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME', 'dskef0sp7'), 
@@ -40,25 +35,18 @@ except Exception as e:
 def upload_file_to_cloudinary(file):
     """
     Uploads a file stream directly to Cloudinary and returns the public URL.
-    This function replaces the Firebase Storage upload logic.
     """
     try:
-        # Reset stream position to the beginning in case it was read earlier
         file.seek(0)
-        
-        # Upload the file stream. resource_type="auto" detects image/video/raw
         upload_result = cloudinary.uploader.upload(
             file,
-            folder = "ecom_products",  # A folder in your Cloudinary media library
+            folder = "ecom_products",
             resource_type = "auto"
         )
-        
         return upload_result.get("secure_url")
-
     except Exception as e:
         print(f"Error uploading file to Cloudinary: {e}")
-        return None # Return None on failure
-
+        return None
 
 # --- Load LLM and RAG models into memory ---
 print("🔧 Building/Loading RAG…")
@@ -67,6 +55,73 @@ print("🧠 Loading LLM…")
 llm_model = chatbot_logic.load_llm() 
 print("✅ Models loaded. Starting Flask app...")
 
+# --- GLOBAL PRODUCT COLLECTION (for chromadb semantic search) ---
+product_coll = None
+
+def fetch_all_products():
+    """Return list of product dicts from Firestore (includes id as 'id')."""
+    prods = []
+    try:
+        for doc in db.collection("products").stream():
+            d = doc.to_dict() or {}
+            d["id"] = doc.id
+            prods.append(d)
+    except Exception as e:
+        print("Failed to fetch products for index build:", e)
+    return prods
+
+def detect_filters_from_query(q: str):
+    """Simple heuristics to detect metadata filters from user query."""
+    if not q:
+        return None
+    ql = q.lower()
+    where = {}
+    if any(tok in ql for tok in ["men", "men's", "mens", "male", "for men", "for a man"]):
+        where["gender"] = "male"
+    elif any(tok in ql for tok in ["women", "women's", "womens", "female", "for women", "for a woman"]):
+        where["gender"] = "female"
+    return where or None
+
+def get_product_recommendations(user_input, top_k=6):
+    """
+    Query chroma product index for semantically similar products with optional metadata filtering.
+    Returns a formatted context string for the LLM.
+    """
+    global product_coll
+    if product_coll is None:
+        return ""
+
+    # detect filters from user query
+    where = detect_filters_from_query(user_input)
+
+    # primary semantic query with filters
+    results = chatbot_logic.product_index_query(product_coll, user_input, n_results=top_k, where=where)
+    
+    # fallback: try without filters if filtered query returned nothing
+    if not results and where:
+        results = chatbot_logic.product_index_query(product_coll, user_input, n_results=top_k, where=None)
+
+    if not results:
+        return ""
+
+    # format to context for LLM
+    ctx_lines = ["Product Catalog Matches:"]
+    for r in results:
+        meta = r.get("meta", {})
+        name = meta.get("name", "Unknown")
+        price = meta.get("price", "")
+        category = meta.get("category", "")
+        ctx_lines.append(f"- Name: {name} | Price: RM{price} | Category: {category}")
+    
+    return "\n".join(ctx_lines)
+
+# Build the product index at startup
+try:
+    products_list = fetch_all_products()
+    product_coll = chatbot_logic.build_product_index_if_missing(products_list, force_rebuild=True)
+    print(f"✅ Product semantic index ready. Items indexed: {product_coll.count() if product_coll else 0}")
+except Exception as e:
+    print(f"❌ Failed to build product index at startup: {e}")
 
 # ------------------ Root Route Redirect ------------------
 @app.route("/")
@@ -134,13 +189,9 @@ def home():
         print(f"Error fetching products from Firestore: {e}")
         all_products = []
 
-    # Extract ALL unique categories
     all_unique_categories = sorted(list(set(p.get('category') for p in all_products if p.get('category'))))
-    
-    # Get the category filter from the URL
     current_category = request.args.get('category', 'all')
     
-    # Filter the products to display
     if current_category != 'all':
         products_to_display = [
             p for p in all_products if p.get('category') == current_category
@@ -157,23 +208,72 @@ def home():
         is_admin=is_admin(session.get('user'))
     )
 
+@app.route("/profile", methods=["GET", "POST"])
+def profile():
+    """User profile page - allows editing username and password"""
+    if "user" not in session:
+        flash("Please log in first")
+        return redirect(url_for("login"))
+    
+    if request.method == "POST":
+        current_username = session.get("user")
+        new_username = request.form.get("username", "").strip()
+        new_password = request.form.get("password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
+        
+        if not new_username:
+            flash("Username cannot be empty", "error")
+            return redirect(url_for("profile"))
+        
+        if new_password:
+            if len(new_password) < 6:
+                flash("Password must be at least 6 characters long", "error")
+                return redirect(url_for("profile"))
+            
+            if new_password != confirm_password:
+                flash("Passwords do not match", "error")
+                return redirect(url_for("profile"))
+        
+        try:
+            users_ref = db.collection("users")
+            
+            if new_username != current_username:
+                existing_user = users_ref.where("username", "==", new_username).get()
+                if existing_user:
+                    flash("Username already taken", "error")
+                    return redirect(url_for("profile"))
+            
+            current_user_docs = users_ref.where("username", "==", current_username).get()
+            if not current_user_docs:
+                flash("User not found", "error")
+                return redirect(url_for("login"))
+            
+            user_doc = current_user_docs[0]
+            user_id = user_doc.id
+            
+            update_data = {"username": new_username}
+            
+            if new_password:
+                update_data["password"] = new_password
+            
+            users_ref.document(user_id).update(update_data)
+            session["user"] = new_username
+            
+            flash("Profile updated successfully!", "success")
+            return redirect(url_for("profile"))
+            
+        except Exception as e:
+            print(f"Error updating profile: {e}")
+            flash("Failed to update profile. Please try again.", "error")
+            return redirect(url_for("profile"))
+    
+    return render_template("profile.html", username=session.get("user"))
+
 # ------------------ Helper: Check if user is admin ------------------
 def is_admin(username):
     """Check if user has admin privileges"""
-    # Option 1: Hardcoded admin list (Simple & Fast)
-    ADMIN_USERS = ["admin", "aaron"]  # Add your admin usernames here
+    ADMIN_USERS = ["admin", "aaron"]
     return username in ADMIN_USERS
-    
-    # Option 2: Check Firestore for admin role (More flexible)
-    # try:
-    #     users_ref = db.collection("users")
-    #     user_docs = users_ref.where("username", "==", username).get()
-    #     if user_docs:
-    #         user_data = user_docs[0].to_dict()
-    #         return user_data.get("is_admin", False)
-    # except Exception as e:
-    #     print(f"Error checking admin status: {e}")
-    #     return False
 
 # ------------------ Admin Panel ------------------
 @app.route("/admin")
@@ -183,7 +283,6 @@ def admin():
         flash("Please log in to access admin panel")
         return redirect(url_for("login"))
     
-    # Check if user is admin
     if not is_admin(session.get("user")):
         flash("Access denied. Admin privileges required.")
         return redirect(url_for("home"))
@@ -201,64 +300,63 @@ def api_add_product():
         return jsonify({"error": "Admin privileges required"}), 403
     
     try:
-        # 1. Get text fields
         name = request.form.get("name")
         price = request.form.get("price")
         category = request.form.get("category")
         description = request.form.get("description")
         
-        # 2. Input validation for price
         try:
             price = float(price)
         except (TypeError, ValueError):
             return jsonify({"error": "Invalid price value"}), 400
 
-        # 3. Handle image upload (File takes priority)
         image_url = ""
-        file = request.files.get("file") # Note: assuming your frontend form sends the file under the 'file' name
+        file = request.files.get("file")
         
         if file and file.filename:
-            # 🔥 Cloudinary Upload Logic 🔥
             image_url = upload_file_to_cloudinary(file)
             
             if not image_url:
-                # The upload function will print the error, we just return a general failure
                 return jsonify({"error": "Image upload failed via Cloudinary. Check server logs."}), 500
         
         elif request.form.get("imageUrl"):
-            # Fallback: If no file, use the provided URL field
             image_url = request.form.get("imageUrl")
         
         else:
             return jsonify({"error": "Please provide an image file or a direct URL"}), 400
         
-        # 4. Create and save product document
         product_data = {
             "name": name,
             "price": price,
             "category": category,
             "description": description,
-            "image": image_url # <-- Cloudinary URL or direct URL is stored here
+            "image": image_url
         }
         
-        # Add to Firestore
         doc_ref = db.collection("products").add(product_data)
-        
+
+        # Rebuild product index after adding new product (force rebuild)
+        global product_coll
+        products_list = fetch_all_products()
+        product_coll = chatbot_logic.build_product_index_if_missing(products_list, force_rebuild=True)
+
+        # doc_ref may be (DocumentReference, write_time) depending on SDK — use [0].id if tuple
+        product_id = doc_ref[0].id if isinstance(doc_ref, (list, tuple)) else getattr(doc_ref, "id", None)
         return jsonify({
             "message": "Product added successfully",
-            "product_id": doc_ref[1].id
+            "product_id": product_id
         }), 201
         
     except Exception as e:
         print(f"Error adding product: {e}")
         return jsonify({"error": "Failed to add product"}), 500
 
-# ------------------ API: Get Single Product (For Edit Modal) ------------------
+# ------------------ API: Get Single Product ------------------
 @app.route("/api/products/<product_id>", methods=["GET"])
 def api_get_single_product(product_id):
-    """Fetches details for a single product by ID for the edit modal - ADMIN ONLY."""
-    if "user" not in session or not is_admin(session.get("user")):
-        return jsonify({"error": "Admin privileges required"}), 403
+    """Fetches details for a single product by ID"""
+    if "user" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
     
     try:
         doc = db.collection('products').document(product_id).get()
@@ -268,77 +366,69 @@ def api_get_single_product(product_id):
         product_data = doc.to_dict()
         product_data['id'] = doc.id
         
-        # Returns all product data (name, price, image, etc.) as JSON
         return jsonify(product_data), 200
         
     except Exception as e:
         print(f"Error fetching product: {e}")
         return jsonify({"error": "Failed to fetch product"}), 500
 
-
 # ------------------ API: Update Product ------------------
 @app.route("/api/products/update/<product_id>", methods=["PUT"])
 def api_update_product(product_id):
-    """Update an existing product in Firestore, handling image changes via Cloudinary - ADMIN ONLY."""
+    """Update an existing product in Firestore - ADMIN ONLY"""
     if "user" not in session or not is_admin(session.get("user")):
         return jsonify({"error": "Admin privileges required"}), 403
     
     try:
-        # 1. Get existing product data
         doc_ref = db.collection("products").document(product_id)
         existing_product = doc_ref.get()
         if not existing_product.exists:
             return jsonify({"error": "Product not found"}), 404
             
         existing_data = existing_product.to_dict()
-        # Default to current URL if no change is made
         image_url = existing_data.get("image", "") 
 
-        # 2. Get form data (Using request.form and request.files for PUT)
         name = request.form.get("name")
         price = request.form.get("price")
         category = request.form.get("category")
         description = request.form.get("description")
-        image_option = request.form.get("imageOption") # Key determinant from frontend radio buttons
+        image_option = request.form.get("imageOption")
 
-        # Validate price
         try:
             price = float(price)
         except (TypeError, ValueError):
             return jsonify({"error": "Invalid price value"}), 400
         
-        # 3. Handle image update based on the imageOption
         if image_option == 'upload':
             file = request.files.get("file") 
             if file and file.filename:
-                # Upload new image to Cloudinary
                 new_image_url = upload_file_to_cloudinary(file)
                 if new_image_url:
                     image_url = new_image_url
                 else:
                     return jsonify({"error": "New image upload failed."}), 500
-            # If 'upload' selected but no file sent, we retain the old image_url
 
         elif image_option == 'url':
             new_image_url_input = request.form.get("imageUrl")
             if new_image_url_input and new_image_url_input.strip():
                 image_url = new_image_url_input.strip()
             else:
-                # Disallow empty URL if 'url' option is selected
                 return jsonify({"error": "Image URL is required when URL option is selected"}), 400
-                
-        # If image_option == 'keep', the image_url remains the existing one.
 
-        # 4. Update the Firestore document
         product_data = {
             "name": name,
             "price": price,
             "category": category,
             "description": description,
-            "image": image_url # The updated or preserved URL
+            "image": image_url
         }
         
         doc_ref.update(product_data)
+        
+        # Rebuild product index after updating product
+        global product_coll
+        products_list = fetch_all_products()
+        product_coll = chatbot_logic.build_product_index_if_missing(products_list, force_rebuild=True)
         
         return jsonify({
             "message": "Product updated successfully",
@@ -386,6 +476,12 @@ def api_delete_product(product_id):
     
     try:
         db.collection("products").document(product_id).delete()
+        
+        # Rebuild product index after deleting product
+        global product_coll
+        products_list = fetch_all_products()
+        product_coll = chatbot_logic.build_product_index_if_missing(products_list)
+        
         return jsonify({"message": "Product deleted successfully"})
     except Exception as e:
         print(f"Error deleting product: {e}")
@@ -410,11 +506,9 @@ def api_products():
             product_data['id'] = doc.id
             all_products.append(product_data)
         
-        # Filter by category if not 'all'
         if category != 'all':
             all_products = [p for p in all_products if p.get('category') == category]
         
-        # Get unique categories
         all_categories = sorted(list(set(p.get('category') for p in all_products if p.get('category'))))
         
         return jsonify({
@@ -440,40 +534,8 @@ def test():
     return "Firestore connection successful!"
 
 # ==========================================================
-# CHATBOT AND RECOMMENDATION LOGIC
+# CHATBOT API
 # ==========================================================
-
-def get_product_recommendations(user_input):
-    """
-    Queries Firestore for products based on keywords.
-    """
-    products_ref = db.collection("products")
-    
-    # Split user input into keywords
-    keywords = [word.lower() for word in user_input.split() if len(word) > 3]
-    
-    product_matches = []
-    
-    for doc in products_ref.stream():
-        product = doc.to_dict()
-        product_name = product.get("name", "").lower()
-        product_desc = product.get("description", "").lower()
-        product_category = product.get("category", "").lower()
-        
-        for kw in keywords:
-            if kw in product_name or kw in product_desc or kw in product_category:
-                product_matches.append(product)
-                break
-                
-    if not product_matches:
-        return "No specific products found in our catalog for that query."
-
-    # Format for the LLM context
-    context_str = "Found matching products:\n"
-    for p in product_matches[:5]:
-        context_str += f"- Name: {p.get('name')}, Price: RM{p.get('price')}, Category: {p.get('category')}\n"
-    return context_str
-
 
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
@@ -489,16 +551,16 @@ def api_chat():
         
         # 1. Save user's message to history
         chat_ref = db.collection("users").document(session["user"]).collection("chat_history")
-        user_msg_doc = chat_ref.add({
+        chat_ref.add({
             "role": "user",
             "text": user_message,
             "created_at": firestore.SERVER_TIMESTAMP
         })
         
-        # 2. Get Product Recommendations (Context 1)
+        # 2. Get Product Recommendations (using chromadb semantic search)
         product_context = get_product_recommendations(user_message)
         
-        # 3. Get RAG info (Context 2)
+        # 3. Get RAG info (general knowledge)
         rag_context = chatbot_logic.rag_query(rag_collection, user_message)
         
         # 4. Combine context for the LLM
@@ -520,7 +582,6 @@ def api_chat():
     except Exception as e:
         print(f"Error in /api/chat: {e}")
         return jsonify({"error": "An internal error occurred"}), 500
-
 
 # ------------------ Run App ------------------
 if __name__ == "__main__":

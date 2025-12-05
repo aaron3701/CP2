@@ -47,33 +47,32 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-slate-50">
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            <div id="flash-messages" class="fixed top-4 right-4 z-50 space-y-2">
-                {% for message in messages %}
-                <div class="bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3">
-                    <span>{{ message }}</span>
-                    <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                    </button>
-                </div>
-                {% endfor %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <div id="flash-messages" class="fixed top-4 right-4 z-50 space-y-2">
+            {% for category, message in messages %}
+            <div class="{% if category == 'error' %}bg-red-600{% else %}bg-purple-600{% endif %} text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3">
+                <span>{{ message }}</span>
+                <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
             </div>
-            <script>
-                // Auto-hide flash messages after 3 seconds
-                setTimeout(function() {
-                    const flashDiv = document.getElementById('flash-messages');
-                    if (flashDiv) {
-                        flashDiv.style.transition = 'opacity 0.5s';
-                        flashDiv.style.opacity = '0';
-                        setTimeout(() => flashDiv.remove(), 500);
-                    }
-                }, 3000);
-            </script>
-        {% endif %}
-    {% endwith %}
+            {% endfor %}
+        </div>
+        <script>
+            setTimeout(function() {
+                const flashDiv = document.getElementById('flash-messages');
+                if (flashDiv) {
+                    flashDiv.style.transition = 'opacity 0.5s';
+                    flashDiv.style.opacity = '0';
+                    setTimeout(() => flashDiv.remove(), 500);
+                }
+            }, 3000);
+        </script>
+    {% endif %}
+{% endwith %}
     
     {% block content %}{% endblock %}
     

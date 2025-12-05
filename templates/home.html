@@ -62,9 +62,14 @@ const EcommerceUI = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  // NEW STATE FOR PRODUCT DETAIL MODAL
   const [productDetailOpen, setProductDetailOpen] = useState(false);
-  const [currentProduct, setCurrentProduct] = useState(null); // Stores the product object for the modal
+  const [currentProduct, setCurrentProduct] = useState(null);
+  
+  // NEW STATE FOR SEARCH
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(-1);
 
   const chatEndRef = useRef(null);
 
@@ -78,7 +83,6 @@ const EcommerceUI = () => {
       setUsername(flaskData.username || '');
       setIsAdmin(flaskData.isAdmin || false);
       
-      // Set initial chat message with username
       setChatMessages([
         { type: 'bot', text: `Hi ${flaskData.username}! I'm Julia, your shopping assistant. How can I help you today?` }
       ]);
@@ -87,15 +91,99 @@ const EcommerceUI = () => {
     }
   }, []);
 
-  // Fetch products when category changes
+  // Handle clicking outside search dropdown
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      const searchContainer = e.target.closest('[data-search-container]');
+      if (!searchContainer) {
+        setShowSearchDropdown(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // NEW FUNCTION: Handle search input
+  const handleSearchInput = (query) => {
+    setSearchQuery(query);
+    setSelectedSearchIndex(-1);
+    
+    if (query.trim().length === 0) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+    
+    const lowerQuery = query.toLowerCase();
+    
+    const scoredResults = products.map(product => {
+      let score = 0;
+      
+      if (product.name.toLowerCase() === lowerQuery) {
+        score += 100;
+      } else if (product.name.toLowerCase().startsWith(lowerQuery)) {
+        score += 50;
+      } else if (product.name.toLowerCase().includes(lowerQuery)) {
+        score += 30;
+      }
+      
+      if (product.category && product.category.toLowerCase().includes(lowerQuery)) {
+        score += 20;
+      }
+      
+      if (product.description && product.description.toLowerCase().includes(lowerQuery)) {
+        score += 10;
+      }
+      
+      return { product, score };
+    }).filter(item => item.score > 0);
+    
+    const results = scoredResults
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map(item => item.product);
+    
+    setSearchResults(results);
+    setShowSearchDropdown(true);
+  };
+
+  // NEW FUNCTION: Handle search keyboard navigation
+  const handleSearchKeydown = (e) => {
+    if (!showSearchDropdown || searchResults.length === 0) return;
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedSearchIndex(prev => 
+          prev < searchResults.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedSearchIndex(prev => prev > 0 ? prev - 1 : -1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedSearchIndex >= 0) {
+          viewProduct(searchResults[selectedSearchIndex].id);
+          setSearchQuery('');
+          setShowSearchDropdown(false);
+        }
+        break;
+      case 'Escape':
+        setShowSearchDropdown(false);
+        break;
+      default:
+        break;
+    }
+  };
+
   const fetchProducts = async (category) => {
     setLoading(true);
     try {
       const response = await fetch(`/home?category=${category}`);
       const html = await response.text();
-      
-      // Parse the HTML to extract products (simple approach)
-      // In production, create a dedicated API endpoint
       window.location.href = `/home?category=${category}`;
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -103,35 +191,30 @@ const EcommerceUI = () => {
     setLoading(false);
   };
   
-  // NEW FUNCTION: Fetch and display product details in a modal
   const viewProduct = async (productId) => {
     try {
-        // The endpoint is expected to return JSON data for a single product
-        const response = await fetch(`/api/products/${productId}`);
-        const product = await response.json();
+      const response = await fetch(`/api/products/${productId}`);
+      const product = await response.json();
 
-        if (!response.ok) {
-            console.error('Failed to load product:', product.error || 'Unknown error');
-            // Assuming showMessage utility is available globally from base.html
-            if (window.showMessage) {
-                window.showMessage(product.error || 'Product details not available.', 'error');
-            }
-            return;
+      if (!response.ok) {
+        console.error('Failed to load product:', product.error || 'Unknown error');
+        if (window.showMessage) {
+          window.showMessage(product.error || 'Product details not available.', 'error');
         }
+        return;
+      }
 
-        // Set the product data and open the modal
-        setCurrentProduct(product);
-        setProductDetailOpen(true);
+      setCurrentProduct(product);
+      setProductDetailOpen(true);
         
     } catch (error) {
-        console.error('Network or parsing error viewing product:', error);
-        if (window.showMessage) {
-             window.showMessage('Could not fetch product data. Please check connection.', 'error');
-        }
+      console.error('Network or parsing error viewing product:', error);
+      if (window.showMessage) {
+        window.showMessage('Could not fetch product data. Please check connection.', 'error');
+      }
     }
   };
 
-  // Helper function to close the modal
   const closeDetailModal = () => {
     setProductDetailOpen(false);
     setCurrentProduct(null);
@@ -139,11 +222,9 @@ const EcommerceUI = () => {
   
   const handleAddToCart = (product) => {
     setCartItems([...cartItems, product]);
-    // Show notification
     alert(`Added ${product.name} to cart!`);
   };
   
-  // Update all instances of addToCart to use the new handler
   const addToCart = (product) => handleAddToCart(product);
 
   const removeFromCart = (index) => {
@@ -166,7 +247,6 @@ const EcommerceUI = () => {
     setChatInput('');
     setSending(true);
 
-    // Add thinking indicator
     setChatMessages(prev => [...prev, { type: 'bot', text: '...', thinking: true }]);
 
     try {
@@ -182,7 +262,6 @@ const EcommerceUI = () => {
 
       const data = await response.json();
       
-      // Remove thinking indicator and add real response
       setChatMessages(prev => {
         const filtered = prev.filter(msg => !msg.thinking);
         return [...filtered, { type: 'bot', text: data.response }];
@@ -202,91 +281,72 @@ const EcommerceUI = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const totalPrice = cartItems.reduce((sum, item) => sum + parseFloat(item.price || 0), 0);
-
-// ... inside the EcommerceUI component...
-
-  // PRODUCT DETAIL MODAL COMPONENT (Defined as a sub-component within the main return)
   const ProductDetailModal = ({ product, isOpen, onClose, onAddToCart }) => {
-      if (!isOpen || !product) return null;
-      
-      const handleImageError = (e) => {
-        e.target.style.display = 'none';
-        e.target.parentElement.innerHTML += '<div class="text-6xl text-slate-300">📦</div>';
-      };
+    if (!isOpen || !product) return null;
+    
+    const handleImageError = (e) => {
+      e.target.style.display = 'none';
+      e.target.parentElement.innerHTML += '<div class="text-6xl text-slate-300">📦</div>';
+    };
 
-      return (
-          // Fixed outer container for backdrop
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm" onClick={onClose}>
-              {/* MODAL CONTAINER: Max height is controlled by max-h-[90vh] and content size */}
-              <div 
-                  className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 transform transition-all duration-300 scale-100 opacity-100" 
-                  onClick={(e) => e.stopPropagation()} 
-              >
-                  {/* SCROLLABLE CONTENT (Main Product Info) */}
-                  {/* KEY CHANGE: items-stretch forces the two grid columns to be the same height */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
-                      
-                      {/* Image Column */}
-                      <div className="md:sticky md:top-0 min-h-72">
-                          <div className="w-full h-full object-contain rounded-lg border flex items-center justify-center bg-slate-50 overflow-hidden">
-                            <img 
-                                src={product.image} 
-                                alt={product.name} 
-                                className="w-full h-full object-contain" 
-                                onError={handleImageError}
-                            />
-                          </div>
-                      </div>
-
-                      {/* Details Column - MODIFIED */}
-                      {/* KEY CHANGE: flex-1 (to stretch vertical space) + flex-col (to enable column layout) + justify-end (to push the last item to the bottom) */}
-                      <div className="space-y-6 flex flex-col justify-between">
-                          
-                          {/* Top Info (Name, Price, Category, Description) */}
-                          <div> 
-                              <div className="border-b pb-4">
-                                  <h2 className="text-3xl font-bold text-slate-900">{product.name}</h2>
-                                  <p className="text-xl font-semibold text-purple-600 mt-1">RM {parseFloat(product.price).toFixed(2)}</p>
-                                  <span className="inline-block mt-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
-                                      {product.category}
-                                  </span>
-                              </div>
-                              
-                              <div>
-                                  <h3 className="text-lg font-semibold text-slate-800 mb-2 mt-6">Description</h3>
-                                  <p className="text-slate-600 whitespace-pre-wrap">{product.description}</p>
-                              </div>
-                          </div>
-                          
-                          {/* Action Button - PUSHED TO THE BOTTOM OF THE COLUMN */}
-                          {/* It now sits at the bottom of the Details column, aligning it with the bottom of the large image */}
-                          <div className="pt-4 border-t border-slate-200">
-                              <button 
-                                  onClick={() => { onAddToCart(product); onClose(); }} 
-                                  className="w-full py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors shadow-md transform hover:scale-[1.01] duration-150"
-                              >
-                                  Add to Cart
-                              </button>
-                          </div>
-                          {/* END OF BUTTON */}
-
-                      </div>
-                  </div>
-                  
-                  {/* Close Button */}
-                  <button onClick={onClose} className="absolute top-4 right-4 text-slate-700 hover:text-slate-900 transition-colors bg-white p-2 rounded-full shadow-md">
-                      <Icon name="x" size={24} />
-                  </button>
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm" onClick={onClose}>
+        <div 
+          className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 transform transition-all duration-300 scale-100 opacity-100" 
+          onClick={(e) => e.stopPropagation()} 
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+            <div className="md:sticky md:top-0 min-h-72">
+              <div className="w-full h-full object-contain rounded-lg border flex items-center justify-center bg-slate-50 overflow-hidden">
+                <img 
+                  src={product.image} 
+                  alt={product.name} 
+                  className="w-full h-full object-contain" 
+                  onError={handleImageError}
+                />
               </div>
+            </div>
+
+            <div className="space-y-6 flex flex-col justify-between">
+              <div> 
+                <div className="border-b pb-4">
+                  <h2 className="text-3xl font-bold text-slate-900">{product.name}</h2>
+                  <p className="text-xl font-semibold text-purple-600 mt-1">RM {parseFloat(product.price).toFixed(2)}</p>
+                  <span className="inline-block mt-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                    {product.category}
+                  </span>
+                </div>
+                
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2 mt-6">Description</h3>
+                  <p className="text-slate-600 whitespace-pre-wrap">{product.description}</p>
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t border-slate-200">
+                <button 
+                  onClick={() => { onAddToCart(product); onClose(); }} 
+                  className="w-full py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors shadow-md transform hover:scale-[1.01] duration-150"
+                >
+                  Add to Cart
+                </button>
+              </div>
+            </div>
           </div>
-      );
+          
+          <button onClick={onClose} className="absolute top-4 right-4 text-slate-700 hover:text-slate-900 transition-colors bg-white p-2 rounded-full shadow-md">
+            <Icon name="x" size={24} />
+          </button>
+        </div>
+      </div>
+    );
   };
 
+  const totalPrice = cartItems.reduce((sum, item) => sum + parseFloat(item.price || 0), 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Debug info - remove after fixing */}
+      {/* Debug info */}
       {products.length === 0 && (
         <div className="fixed top-20 left-4 bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded z-50">
           <p className="font-bold">Debug Info:</p>
@@ -296,7 +356,7 @@ const EcommerceUI = () => {
         </div>
       )}
       
-      {/* Header (No changes needed) */}
+      {/* Header */}
       <header className="bg-white/80 backdrop-blur-lg sticky top-0 z-40 shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -309,7 +369,8 @@ const EcommerceUI = () => {
               </span>
             </div>
 
-            <div className="hidden md:flex flex-1 max-w-xl mx-8">
+            {/* Search Bar with Dropdown */}
+            <div className="hidden md:flex flex-1 max-w-xl mx-8" data-search-container>
               <div className="relative w-full group">
                 <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">
                   <Icon name="search" size={20} />
@@ -317,13 +378,57 @@ const EcommerceUI = () => {
                 <input
                   type="text"
                   placeholder="Search for products..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchInput(e.target.value)}
+                  onKeyDown={handleSearchKeydown}
+                  onFocus={() => setShowSearchDropdown(true)}
                   className="w-full pl-12 pr-4 py-3 rounded-full border-2 border-slate-200 focus:border-purple-500 focus:outline-none transition-all bg-slate-50 hover:bg-white"
                 />
+                
+                {/* Search Dropdown Results */}
+                {showSearchDropdown && searchResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl z-50 max-h-96 overflow-y-auto border-2 border-purple-200">
+                    {searchResults.map((product, idx) => (
+                      <div
+                        key={product.id}
+                        onClick={() => {
+                          viewProduct(product.id);
+                          setSearchQuery('');
+                          setShowSearchDropdown(false);
+                        }}
+                        className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-b-0 flex items-center space-x-3 transition-colors ${
+                          selectedSearchIndex === idx ? 'bg-purple-100' : 'hover:bg-purple-50'
+                        }`}
+                      >
+                        <img 
+                          src={product.image} 
+                          alt={product.name}
+                          className="w-12 h-12 object-cover rounded-lg"
+                          onError={(e) => e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><text y="24" font-size="24">📦</text></svg>'}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 truncate">{product.name}</p>
+                          <p className="text-sm text-slate-600 truncate">{product.description}</p>
+                          <p className="text-purple-600 font-bold text-sm">RM {product.price}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Show message when no results */}
+                {showSearchDropdown && searchQuery.length > 0 && searchResults.length === 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl z-50 p-4 text-center text-slate-500 border-2 border-slate-200">
+                    <p>No products found matching "{searchQuery}"</p>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              <span className="hidden md:block text-sm text-slate-600">Hello, <strong>{username}</strong></span>
+              <a href="/profile" className="hidden md:block text-sm text-slate-600 hover:text-purple-600 transition-colors cursor-pointer bg-slate-100 px-4 py-2 rounded-full hover:bg-slate-200">
+                Hello, <strong>{username}</strong> ⚙️
+              </a>
               {isAdmin && (
                 <a 
                   href="/admin" 
@@ -364,7 +469,7 @@ const EcommerceUI = () => {
         </div>
       </header>
 
-      {/* Hero Section (No changes needed) */}
+      {/* Hero Section */}
       <section className="relative bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 text-white py-16 overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-10 left-10 w-72 h-72 bg-white rounded-full blur-3xl animate-pulse"></div>
@@ -398,7 +503,7 @@ const EcommerceUI = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Category Filters (No changes needed) */}
+        {/* Category Filters */}
         <div className="flex flex-wrap gap-2 mb-6">
           {categories.map(cat => (
             <a
@@ -415,13 +520,13 @@ const EcommerceUI = () => {
           ))}
         </div>
 
-        {/* Products Grid - MODIFIED TO BE CLICKABLE */}
+        {/* Products Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {products.map(product => (
             <div
               key={product.id}
               className="bg-white rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 overflow-hidden group hover:-translate-y-2 cursor-pointer"
-              onClick={() => viewProduct(product.id)} // ADDED CLICK HANDLER HERE
+              onClick={() => viewProduct(product.id)}
             >
               <div className="relative h-48 bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center overflow-hidden">
                 <img 
@@ -434,7 +539,7 @@ const EcommerceUI = () => {
                   }}
                 />
                 <button
-                  onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id); }} // ADDED e.stopPropagation()
+                  onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id); }}
                   className="absolute bottom-3 right-3 bg-white p-2 rounded-full shadow-md hover:scale-110 transition-transform"
                 >
                   <Icon name="heart" 
@@ -456,7 +561,7 @@ const EcommerceUI = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-2xl font-bold text-purple-600">RM {product.price}</span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); addToCart(product); }} // ADDED e.stopPropagation()
+                    onClick={(e) => { e.stopPropagation(); addToCart(product); }}
                     className="bg-purple-600 text-white px-4 py-2 rounded-full hover:bg-purple-700 transition-all transform hover:scale-105 shadow-md text-sm font-medium"
                   >
                     Add to Cart
@@ -474,15 +579,15 @@ const EcommerceUI = () => {
         )}
       </div>
       
-      {/* 🛑 PRODUCT DETAIL MODAL INJECTED HERE */}
+      {/* Product Detail Modal */}
       <ProductDetailModal 
-          product={currentProduct}
-          isOpen={productDetailOpen}
-          onClose={closeDetailModal}
-          onAddToCart={handleAddToCart}
+        product={currentProduct}
+        isOpen={productDetailOpen}
+        onClose={closeDetailModal}
+        onAddToCart={handleAddToCart}
       />
 
-      {/* Chatbot (No changes needed) */}
+      {/* Chatbot */}
       <div className="fixed bottom-6 right-6 z-50">
         {!chatOpen ? (
           <button
@@ -547,7 +652,7 @@ const EcommerceUI = () => {
         )}
       </div>
 
-      {/* Cart Sidebar (No changes needed) */}
+      {/* Cart Sidebar */}
       {cartOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm" onClick={() => setCartOpen(false)}>
           <div 
@@ -610,7 +715,6 @@ const EcommerceUI = () => {
 
 ReactDOM.render(<EcommerceUI />, document.getElementById('root'));
 
-// Log when React has mounted
 console.log('React app mounted successfully');
 console.log('Flask data:', document.getElementById('flask-data')?.textContent);
 </script>
